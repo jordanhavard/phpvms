@@ -156,6 +156,8 @@ class DatabaseActivator implements ActivatorInterface
 
         $module->enabled = $active;
         $module->save();
+
+        $this->flushCaches($module->name);
     }
 
     /**
@@ -170,6 +172,8 @@ class DatabaseActivator implements ActivatorInterface
 
         $module->enabled = $status;
         $module->save();
+
+        $this->flushCaches($name);
     }
 
     /**
@@ -187,6 +191,31 @@ class DatabaseActivator implements ActivatorInterface
             Log::error('Module '.$module.' Delete failed! Exception : '.$e->getMessage());
 
             return;
+        }
+
+        $this->flushCaches($name);
+    }
+
+    /**
+     * Invalidate the module manifest caches that mutating operations leave stale.
+     *
+     * Two caches need busting: phpVMS's own production-only `modules` cache
+     * (the DB row mirror read by getModulesStatuses + getModuleByName) and
+     * nWidart's `phpvms-modules` cache (the disk scan + manifest result read
+     * by Nwidart\Modules\FileRepository).
+     */
+    private function flushCaches(string $name): void
+    {
+        if (app()->environment('production')) {
+            $cache = config('cache.keys.MODULES');
+            Cache::forget($cache['key']);
+            Cache::forget($cache['key'].'.'.$name);
+        }
+
+        $nwidartKey = config('modules.cache.key');
+        $nwidartDriver = config('modules.cache.driver');
+        if ($nwidartKey) {
+            Cache::store($nwidartDriver)->forget($nwidartKey);
         }
     }
 }
